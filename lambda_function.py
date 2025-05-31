@@ -1,4 +1,5 @@
-import json, os
+import json
+import os
 def lambda_handler(event, context):
     "Lambda function handler that processes incoming events and returns a response."
     print("Received event: " + json.dumps(event, indent=2))
