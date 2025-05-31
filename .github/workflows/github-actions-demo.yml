@@ -1,18 +1,71 @@
-name: GitHub Actions Demo
-run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+name: Deploy Lambda Function
 on: [push]
+
+env:
+  AWS_REGION: us-east-1
+  LAMBDA_FUNCTION_NAME: MySimpleLambdaFunction
+  AWS_ROLE_TO_ASSUME: arn:aws:iam::804751576565:role/gitactions-lambda-role
+
+permissions:
+  id-token: write
+  contents: read
+  
 jobs:
-  Explore-GitHub-Actions:
+  deploy:
+    name: Deploy Lambda
     runs-on: ubuntu-latest
+    environment: production
     steps:
-      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
-      - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
-      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
-      - name: Check out repository code
-        uses: actions/checkout@v4
-      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
-      - run: echo "🖥️ The workflow is now ready to test your code on the runner."
-      - name: List files in the repository
-        run: |
-          ls ${{ github.workspace }}
-      - run: echo "🍏 This job's status is ${{ job.status }}."
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install awscli pytest
+
+    - name: Run unit tests
+      run: |
+        python -m unittest discover -s . -p 'test_*.py'
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+        role-session-name: GitHubActionsLambdaDeployment
+
+    - name: Zip the Lambda function
+      run: zip function.zip lambda_function.py
+
+    - name: Check if Lambda function exists
+      id: check_lambda
+      run: |
+        if aws lambda get-function --function-name ${{ env.LAMBDA_FUNCTION_NAME }}; then
+          echo "::set-output name=lambda_exists::true"
+        else
+          echo "::set-output name=lambda_exists::false"
+        fi
+
+    - name: Create or Update Lambda function
+      run: |
+        if [ "${{ steps.check_lambda.outputs.lambda_exists }}" == "false" ]; then
+          echo "Creating Lambda function..."
+          aws lambda create-function --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --runtime python3.8 --role ${{ env.AWS_ROLE_TO_ASSUME }} \
+            --handler lambda_function.lambda_handler --zip-file fileb://function.zip
+        else
+          echo "Updating Lambda function..."
+          aws lambda update-function-code \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --zip-file fileb://function.zip --publish
+        fi
+
+    - name: Clean up
+      run: rm function.zip
