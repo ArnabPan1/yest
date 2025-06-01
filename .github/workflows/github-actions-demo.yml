@@ -43,7 +43,7 @@ jobs:
         role-session-name: GitHubActionsLambdaDeployment
         
     - name: Sts GetCallerIdentity
-        run:|
+      run: |
           aws sts get-caller-identity
           
     # - name: Zip the Lambda function
